@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useDeck } from '../contexts/DeckContext';
 
 const Home = () => {
   const [games, setGames] = useState([]);
@@ -9,10 +10,9 @@ const Home = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [gameName, setGameName] = useState('');
   const [maxPlayers, setMaxPlayers] = useState(4);
-  const [deckText, setDeckText] = useState('');
-  const [showDeckModal, setShowDeckModal] = useState(false);
   
   const { currentUser, logout, getAuthHeader } = useAuth();
+  const { decks, getActiveDeck, setActiveDeck } = useDeck();
   const navigate = useNavigate();
 
   // Fetch available games
@@ -68,20 +68,16 @@ const Home = () => {
   };
 
   const handleJoinGame = (gameId) => {
-    if (!deckText) {
-      setShowDeckModal(true);
+    const activeDeck = getActiveDeck();
+    if (!activeDeck) {
+      navigate('/decks');
       return;
     }
     
     navigate(`/game/${gameId}`);
   };
 
-  const handleDeckSubmit = (e) => {
-    e.preventDefault();
-    setShowDeckModal(false);
-    // Store deck in localStorage for now
-    localStorage.setItem('userDeck', deckText);
-  };
+  const activeDeck = getActiveDeck();
 
   return (
     <div className="min-h-screen bg-bg-primary text-text-primary">
@@ -90,6 +86,12 @@ const Home = () => {
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
           <h1 className="text-2xl font-bold text-accent">MTG Multiplayer</h1>
           <div className="flex items-center space-x-4">
+            <button
+              onClick={() => navigate('/decks')}
+              className="btn-secondary text-sm"
+            >
+              Manage Decks
+            </button>
             <span className="text-text-secondary">
               Welcome, {currentUser.username}
             </span>
@@ -111,10 +113,56 @@ const Home = () => {
           </div>
         )}
 
+        {/* Active Deck Display */}
+        <div className="bg-bg-secondary rounded-lg p-4 mb-6">
+          <div className="flex justify-between items-center">
+            <h3 className="text-lg font-semibold">Active Deck</h3>
+            <button
+              onClick={() => navigate('/decks')}
+              className="btn-secondary text-sm"
+            >
+              Change Deck
+            </button>
+          </div>
+          {activeDeck ? (
+            <div className="mt-2 flex items-start">
+              {activeDeck.commander && activeDeck.commander.imageUrl && (
+                <div className="mr-4 w-24">
+                  <img 
+                    src={activeDeck.commander.imageUrl} 
+                    alt={activeDeck.commander.name}
+                    className="rounded-lg w-full"
+                  />
+                  <p className="text-xs text-center mt-1 text-accent">Commander</p>
+                </div>
+              )}
+              <div>
+                <p className="text-accent font-medium">{activeDeck.name}</p>
+                <p className="text-text-secondary text-sm">{activeDeck.cardCount} cards</p>
+                {activeDeck.commander && (
+                  <p className="text-text-secondary text-sm">
+                    Commander: {activeDeck.commander.name}
+                  </p>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="mt-2 text-yellow-500">
+              <p>No deck selected. Please select a deck before joining a game.</p>
+            </div>
+          )}
+        </div>
+
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-semibold">Available Games</h2>
           <button
-            onClick={() => setShowCreateModal(true)}
+            onClick={() => {
+              if (!activeDeck) {
+                navigate('/decks');
+                return;
+              }
+              setShowCreateModal(true);
+            }}
             className="btn-primary"
           >
             Create Game
@@ -131,7 +179,13 @@ const Home = () => {
               No games available at the moment
             </p>
             <button
-              onClick={() => setShowCreateModal(true)}
+              onClick={() => {
+                if (!activeDeck) {
+                  navigate('/decks');
+                  return;
+                }
+                setShowCreateModal(true);
+              }}
               className="btn-primary"
             >
               Create a New Game
@@ -152,7 +206,8 @@ const Home = () => {
                   <div className="flex justify-end">
                     <button
                       onClick={() => handleJoinGame(game.id)}
-                      className="btn-primary"
+                      className={`btn-primary ${!activeDeck ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      disabled={!activeDeck}
                     >
                       Join Game
                     </button>
@@ -200,6 +255,32 @@ const Home = () => {
                 </select>
               </div>
               
+              <div className="form-group">
+                <label className="form-label">
+                  Selected Deck
+                </label>
+                <div className="bg-bg-primary p-3 rounded flex items-start">
+                  {activeDeck.commander && activeDeck.commander.imageUrl && (
+                    <div className="mr-3 w-16">
+                      <img 
+                        src={activeDeck.commander.imageUrl} 
+                        alt={activeDeck.commander.name}
+                        className="rounded-lg w-full"
+                      />
+                    </div>
+                  )}
+                  <div>
+                    <p className="font-medium">{activeDeck.name}</p>
+                    <p className="text-text-secondary text-sm">{activeDeck.cardCount} cards</p>
+                    {activeDeck.commander && (
+                      <p className="text-accent text-sm">
+                        Commander: {activeDeck.commander.name}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+              
               <div className="flex justify-end space-x-4 mt-6">
                 <button
                   type="button"
@@ -214,48 +295,6 @@ const Home = () => {
                   disabled={loading}
                 >
                   {loading ? 'Creating...' : 'Create Game'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Deck Input Modal */}
-      {showDeckModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-bg-secondary rounded-lg p-8 max-w-md w-full">
-            <h2 className="text-xl font-semibold mb-4">Import Your Deck</h2>
-            <form onSubmit={handleDeckSubmit}>
-              <div className="form-group">
-                <label htmlFor="deckText" className="form-label">
-                  Paste your deck list (one card per line, format: "1 Card Name")
-                </label>
-                <textarea
-                  id="deckText"
-                  className="input-field h-64"
-                  value={deckText}
-                  onChange={(e) => setDeckText(e.target.value)}
-                  placeholder="10 Forest
-1 Black Lotus
-..."
-                  required
-                ></textarea>
-              </div>
-              
-              <div className="flex justify-end space-x-4 mt-6">
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => setShowDeckModal(false)}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn-primary"
-                >
-                  Import Deck
                 </button>
               </div>
             </form>
