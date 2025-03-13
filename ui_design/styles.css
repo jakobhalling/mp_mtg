@@ -1,0 +1,326 @@
+/* CSS Styling for MTG Multiplayer Game UI */
+
+:root {
+  /* Color variables */
+  --bg-color: #1a1a2e;
+  --player-area-bg: #16213e;
+  --opponent-area-bg: #0f3460;
+  --card-hover-bg: rgba(255, 255, 255, 0.1);
+  --zone-border: #e94560;
+  --text-color: #f1f1f1;
+  --life-counter: #e94560;
+  --phase-active: #4caf50;
+  --phase-inactive: #555;
+}
+
+/* Main container */
+.game-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  overflow: hidden;
+  font-family: 'Roboto', sans-serif;
+}
+
+/* Opponents section (upper half) */
+.opponents-section {
+  height: 50vh;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--opponent-area-bg);
+  border-bottom: 2px solid var(--zone-border);
+}
+
+/* Opponent thumbnails for zoomed view */
+.opponent-thumbnails {
+  display: flex;
+  height: 60px;
+  background-color: rgba(0, 0, 0, 0.3);
+}
+
+.opponent-thumbnail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 15px;
+  cursor: pointer;
+  border-right: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.opponent-thumbnail:hover {
+  background-color: var(--card-hover-bg);
+}
+
+/* Opponents grid for different player counts */
+.opponents-grid {
+  display: flex;
+  height: 100%;
+  width: 100%;
+}
+
+.opponents-1 .opponent-board {
+  width: 100%;
+}
+
+.opponents-2 .opponent-board {
+  width: 50%;
+  border-right: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.opponents-3 .opponent-board {
+  width: 33.33%;
+  border-right: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.opponents-3 .opponent-board:last-child {
+  border-right: none;
+}
+
+/* Opponent board */
+.opponent-board {
+  display: flex;
+  flex-direction: column;
+  padding: 10px;
+  position: relative;
+  cursor: pointer;
+}
+
+.opponent-board.zoomed {
+  cursor: default;
+  height: calc(50vh - 60px);
+}
+
+.opponent-board:hover:not(.zoomed) {
+  background-color: var(--card-hover-bg);
+}
+
+.opponent-info {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.opponent-name {
+  font-weight: bold;
+}
+
+.opponent-life {
+  color: var(--life-counter);
+  font-weight: bold;
+}
+
+/* Player section (lower half) */
+.player-section {
+  height: 45vh;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--player-area-bg);
+  position: relative;
+  padding: 10px;
+}
+
+.player-info {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.player-name {
+  font-weight: bold;
+  font-size: 1.2em;
+}
+
+.player-life {
+  display: flex;
+  align-items: center;
+  color: var(--life-counter);
+  font-weight: bold;
+  font-size: 1.2em;
+}
+
+.life-button {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: none;
+  background-color: var(--zone-border);
+  color: white;
+  font-weight: bold;
+  margin: 0 5px;
+  cursor: pointer;
+}
+
+/* Game zones */
+.player-zones, .opponent-zones {
+  display: flex;
+  position: absolute;
+  right: 10px;
+  top: 40px;
+}
+
+.zone {
+  width: 60px;
+  height: 80px;
+  margin-left: 10px;
+  border: 1px solid var(--zone-border);
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+}
+
+.zone:hover {
+  background-color: var(--card-hover-bg);
+}
+
+.card-count {
+  font-weight: bold;
+  color: white;
+}
+
+/* Battlefield */
+.battlefield {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  padding: 10px;
+  overflow-y: auto;
+}
+
+/* Hand */
+.hand {
+  height: 150px;
+  display: flex;
+  justify-content: center;
+  padding: 10px;
+  background-color: rgba(0, 0, 0, 0.3);
+  border-top: 1px solid var(--zone-border);
+}
+
+/* Card */
+.card {
+  width: 100px;
+  height: 140px;
+  margin: 5px;
+  border-radius: 5px;
+  overflow: hidden;
+  transition: transform 0.2s;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
+  position: relative;
+}
+
+.card:hover {
+  transform: scale(1.05);
+  z-index: 10;
+}
+
+.card.tapped {
+  transform: rotate(90deg);
+}
+
+.card img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Enlarged card on hover */
+.card-enlarged {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--bg-color);
+  border-radius: 10px;
+  padding: 10px;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.7);
+  max-width: 300px;
+}
+
+.card-enlarged img {
+  width: 100%;
+  border-radius: 5px;
+  margin-bottom: 10px;
+}
+
+.card-text {
+  padding: 10px;
+  font-size: 0.9em;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+/* Game controls */
+.game-controls {
+  height: 5vh;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 20px;
+  background-color: rgba(0, 0, 0, 0.5);
+}
+
+.phase-indicator {
+  display: flex;
+}
+
+.phase {
+  padding: 5px 10px;
+  margin-right: 5px;
+  border-radius: 3px;
+  background-color: var(--phase-inactive);
+  cursor: pointer;
+  font-size: 0.8em;
+  text-transform: uppercase;
+}
+
+.phase.active {
+  background-color: var(--phase-active);
+}
+
+.action-buttons {
+  display: flex;
+}
+
+.action-button {
+  padding: 5px 15px;
+  margin-left: 10px;
+  border: none;
+  border-radius: 3px;
+  background-color: var(--zone-border);
+  color: white;
+  cursor: pointer;
+}
+
+.action-button:hover {
+  background-color: #c73e54;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .card {
+    width: 80px;
+    height: 112px;
+  }
+  
+  .zone {
+    width: 50px;
+    height: 70px;
+  }
+  
+  .hand {
+    height: 120px;
+  }
+}
