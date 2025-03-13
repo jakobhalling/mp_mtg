@@ -19,21 +19,41 @@ export function AuthProvider({ children }) {
     // Check if user is already logged in
     const token = localStorage.getItem('token');
     if (token) {
-      axios.get(`${API_URL}/users/me`, {
-        headers: {
-          'x-auth-token': token
+      console.log('Checking authentication with token');
+      // Use a more resilient approach to handle API errors
+      const checkAuth = async () => {
+        try {
+          const response = await axios.get(`${API_URL}/users/me`, {
+            headers: {
+              'x-auth-token': token
+            }
+          });
+          console.log('Authentication successful:', response.data);
+          setCurrentUser(response.data);
+        } catch (error) {
+          console.error('Authentication error:', error.message);
+          // If token is invalid or server error, remove it
+          localStorage.removeItem('token');
+          
+          // Try alternative endpoint if the first one fails
+          try {
+            console.log('Trying alternative authentication endpoint');
+            const altResponse = await axios.get(`${API_URL}/auth/me`, {
+              headers: {
+                'x-auth-token': token
+              }
+            });
+            console.log('Alternative authentication successful:', altResponse.data);
+            setCurrentUser(altResponse.data);
+          } catch (altError) {
+            console.error('Alternative authentication failed:', altError.message);
+          }
+        } finally {
+          setLoading(false);
         }
-      })
-      .then(response => {
-        setCurrentUser(response.data);
-      })
-      .catch(error => {
-        // If token is invalid, remove it
-        localStorage.removeItem('token');
-      })
-      .finally(() => {
-        setLoading(false);
-      });
+      };
+      
+      checkAuth();
     } else {
       setLoading(false);
     }
@@ -43,18 +63,41 @@ export function AuthProvider({ children }) {
   const register = async (email, password, username) => {
     try {
       setError('');
-      const response = await axios.post(`${API_URL}/users/register`, {
-        email,
-        password,
-        username
-      });
+      console.log('Attempting to register user:', username);
       
-      // Save token and user data
-      localStorage.setItem('token', response.data.token);
-      setCurrentUser(response.data.user);
-      return response.data.user;
+      // Try primary endpoint
+      try {
+        const response = await axios.post(`${API_URL}/users/register`, {
+          email,
+          password,
+          username
+        });
+        
+        // Save token and user data
+        localStorage.setItem('token', response.data.token);
+        setCurrentUser(response.data.user);
+        console.log('Registration successful');
+        return response.data.user;
+      } catch (primaryError) {
+        console.error('Primary registration endpoint failed:', primaryError.message);
+        
+        // Try alternative endpoint
+        const altResponse = await axios.post(`${API_URL}/auth/register`, {
+          email,
+          password,
+          username
+        });
+        
+        // Save token and user data
+        localStorage.setItem('token', altResponse.data.token);
+        setCurrentUser(altResponse.data.user);
+        console.log('Registration successful via alternative endpoint');
+        return altResponse.data.user;
+      }
     } catch (error) {
-      setError(error.response?.data?.message || 'Failed to register');
+      const errorMessage = error.response?.data?.message || 'Failed to register';
+      console.error('Registration failed:', errorMessage);
+      setError(errorMessage);
       throw error;
     }
   };
@@ -63,17 +106,39 @@ export function AuthProvider({ children }) {
   const login = async (email, password) => {
     try {
       setError('');
-      const response = await axios.post(`${API_URL}/users/login`, {
-        email,
-        password
-      });
+      console.log('Attempting to login user:', email);
       
-      // Save token and user data
-      localStorage.setItem('token', response.data.token);
-      setCurrentUser(response.data.user);
-      return response.data.user;
+      // Try primary endpoint
+      try {
+        const response = await axios.post(`${API_URL}/users/login`, {
+          email,
+          password
+        });
+        
+        // Save token and user data
+        localStorage.setItem('token', response.data.token);
+        setCurrentUser(response.data.user);
+        console.log('Login successful');
+        return response.data.user;
+      } catch (primaryError) {
+        console.error('Primary login endpoint failed:', primaryError.message);
+        
+        // Try alternative endpoint
+        const altResponse = await axios.post(`${API_URL}/auth/login`, {
+          email,
+          password
+        });
+        
+        // Save token and user data
+        localStorage.setItem('token', altResponse.data.token);
+        setCurrentUser(altResponse.data.user);
+        console.log('Login successful via alternative endpoint');
+        return altResponse.data.user;
+      }
     } catch (error) {
-      setError(error.response?.data?.message || 'Failed to login');
+      const errorMessage = error.response?.data?.message || 'Failed to login';
+      console.error('Login failed:', errorMessage);
+      setError(errorMessage);
       throw error;
     }
   };
@@ -81,7 +146,11 @@ export function AuthProvider({ children }) {
   // Logout function
   const logout = () => {
     localStorage.removeItem('token');
+    localStorage.removeItem('activeDeckId');
+    localStorage.removeItem('userDeck');
+    localStorage.removeItem('activeFullDeck');
     setCurrentUser(null);
+    console.log('User logged out');
   };
 
   // Get auth header
