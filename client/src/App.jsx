@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider } from './contexts/AuthContext';
 import { GameProvider } from './contexts/GameContext';
 import { DeckProvider } from './contexts/DeckContext';
+import SinglePlayerGame from './singleplayer/SinglePlayerGame';
 
 // Pages
 import Login from './pages/Login';
@@ -21,28 +22,42 @@ function App() {
     <Router>
       <AuthProvider>
         <DeckProvider>
-          <Routes>
-            {/* Public Routes */}
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
-            
-            {/* Protected Routes */}
-            <Route path="/" element={<PrivateRoute><Home /></PrivateRoute>} />
-            <Route path="/decks" element={<PrivateRoute><DeckManager /></PrivateRoute>} />
-            <Route path="/lobby" element={<PrivateRoute><GameLobby /></PrivateRoute>} />
-            <Route path="/game/:gameId" element={
-              <PrivateRoute>
-                <GameProvider>
-                  <GameRoom />
-                </GameProvider>
-              </PrivateRoute>
-            } />
-            <Route path="/join/:gameId" element={<PrivateRoute><GameLobby /></PrivateRoute>} />
-            
-            {/* 404 Route */}
-            <Route path="/404" element={<NotFound />} />
-            <Route path="*" element={<Navigate to="/404" replace />} />
-          </Routes>
+          <div className="App">
+            <Routes>
+              {/* Public Routes */}
+              <Route path="/login" element={<Login />} />
+              <Route path="/register" element={<Register />} />
+              
+              {/* Protected Routes */}
+              <Route path="/" element={<PrivateRoute><Home /></PrivateRoute>} />
+              <Route path="/decks" element={<PrivateRoute><DeckManager /></PrivateRoute>} />
+              <Route path="/game/:gameId" element={
+                <PrivateRoute>
+                  <GameProvider>
+                    <GameRoom />
+                  </GameProvider>
+                </PrivateRoute>
+              } />
+              <Route path="/game/:gameId/lobby" element={
+                <PrivateRoute>
+                  <GameProvider>
+                    <GameLobby />
+                  </GameProvider>
+                </PrivateRoute>
+              } />
+              <Route path="/singleplayer" element={
+                <PrivateRoute>
+                  <GameProvider>
+                    <SinglePlayerGame />
+                  </GameProvider>
+                </PrivateRoute>
+              } />
+              
+              {/* 404 Route */}
+              <Route path="/404" element={<NotFound />} />
+              <Route path="*" element={<Navigate to="/404" replace />} />
+            </Routes>
+          </div>
         </DeckProvider>
       </AuthProvider>
     </Router>

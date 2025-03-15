@@ -113,6 +113,22 @@ const Home = () => {
           </div>
         )}
 
+        {/* Game Mode Selection */}
+        <div className="flex justify-center space-x-6 mb-8">
+          <button
+            onClick={() => navigate('/singleplayer')}
+            className="btn-primary px-8 py-4 text-lg"
+          >
+            Play Singleplayer
+          </button>
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="btn-primary px-8 py-4 text-lg"
+          >
+            Create Multiplayer Game
+          </button>
+        </div>
+
         {/* Active Deck Display */}
         <div className="bg-bg-secondary rounded-lg p-4 mb-6">
           <div className="flex justify-between items-center">

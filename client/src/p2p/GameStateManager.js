@@ -55,7 +55,7 @@ class GameStateManager {
     // Store previous state in history
     if (this.gameState) {
       this.stateHistory.push({
-        state: this.gameState,
+        state: JSON.parse(JSON.stringify(this.gameState)),
         timestamp: Date.now()
       });
       
@@ -65,8 +65,16 @@ class GameStateManager {
       }
     }
     
-    this.gameState = newState;
+    // Deep clone the new state to prevent external mutations
+    this.gameState = JSON.parse(JSON.stringify(newState));
+    
+    // Notify listeners with a clone of the state
     this.notifyStateListeners();
+    
+    // Broadcast state update if we're connected
+    if (this.p2pManager && this.p2pManager.isConnected()) {
+      this.broadcastGameState();
+    }
   }
   
   // Get the current game state
@@ -153,6 +161,12 @@ class GameStateManager {
         
         case 'create-token':
           return this.processCreateToken(newState, action);
+        
+        case 'shuffle-library':
+          return this.processShuffleLibrary(newState, action);
+        
+        case 'move-to-library':
+          return this.processMoveToLibrary(newState, action);
         
         default:
           console.error(`Unknown action type: ${action.type}`);
@@ -328,6 +342,49 @@ class GameStateManager {
     
     // Add to battlefield
     player.battlefield.push(token);
+    
+    this.setGameState(state);
+    return true;
+  }
+  
+  // Process shuffle library action
+  processShuffleLibrary(state, action) {
+    const { playerId } = action.payload;
+    const player = state.players.find(p => p.id === playerId);
+    
+    if (!player) return false;
+    
+    // Fisher-Yates shuffle algorithm
+    for (let i = player.library.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [player.library[i], player.library[j]] = [player.library[j], player.library[i]];
+    }
+    
+    this.setGameState(state);
+    return true;
+  }
+  
+  // Process move to library action
+  processMoveToLibrary(state, action) {
+    const { playerId, cardId, sourceZone, position } = action.payload;
+    const player = state.players.find(p => p.id === playerId);
+    
+    if (!player || !player[sourceZone]) return false;
+    
+    // Find the card in source zone
+    const cardIndex = player[sourceZone].findIndex(card => card.id === cardId);
+    if (cardIndex === -1) return false;
+    
+    // Remove from source zone
+    const [card] = player[sourceZone].splice(cardIndex, 1);
+    
+    // Add to library based on position
+    if (position === 'bottom') {
+      player.library.push(card);
+    } else {
+      // Default to top
+      player.library.unshift(card);
+    }
     
     this.setGameState(state);
     return true;
@@ -599,9 +656,12 @@ class GameStateManager {
   
   // Notify all state listeners
   notifyStateListeners() {
+    if (!this.gameState) return;
+    
+    const stateClone = JSON.parse(JSON.stringify(this.gameState));
     this.stateListeners.forEach(callback => {
       try {
-        callback(this.gameState);
+        callback(stateClone);
       } catch (err) {
         console.error('Error in state listener:', err);
       }

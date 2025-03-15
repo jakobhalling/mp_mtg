@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import io from 'socket.io-client';
 import { v4 as uuidv4 } from 'uuid';
 import { useAuth } from './AuthContext';
@@ -426,46 +426,35 @@ export function GameProvider({ children }) {
       let connectedSocket = null;
       try {
         console.log('Ensuring socket connection before joining game');
-        connectedSocket = await ensureSocketConnection(true); // Try to connect even in offline mode
+        connectedSocket = await ensureSocketConnection(true);
       } catch (socketError) {
         console.error('Socket connection failed:', socketError.message);
         // Continue in offline mode if socket connection fails
         setOfflineMode(true);
       }
 
-      // If we have a socket connection, use it
       if (connectedSocket) {
-        console.log('Joining game room via socket');
-        // Join game room via socket
-        connectedSocket.emit('join-game', {
-          gameId,
-          userId: currentUser.id
-        });
-
-        // Initialize P2P connection manager
-        console.log('Initializing P2P connection manager');
+        // Initialize P2P and game managers for online mode
+        console.log('Initializing online game managers');
         const newP2pManager = new P2PConnectionManager(currentUser.id, connectedSocket);
-        setP2pManager(newP2pManager);
-
-        // Initialize game state manager
-        console.log('Initializing game state manager');
         const newGameManager = new GameStateManager(newP2pManager, currentUser.id);
+        
+        setP2pManager(newP2pManager);
         setGameManager(newGameManager);
 
-        // Listen for game state changes
+        // Set up state listeners with useState updater functions
         const removeStateListener = newGameManager.addStateListener((newState) => {
-          setGameState(newState);
+          console.log('Game state updated:', newState);
           if (newState) {
+            setGameState(newState);
             setPlayers(newState.players);
           }
         });
 
-        // Listen for connection events
         const removeConnectionListener = newP2pManager.addConnectionListener((event, data) => {
           if (event === 'peer-connected') {
             setIsConnected(true);
           } else if (event === 'peer-disconnected') {
-            // Check if we still have any connections
             const connectedPeers = newP2pManager.getConnectedPeers();
             setIsConnected(connectedPeers.length > 0);
           }
@@ -483,12 +472,12 @@ export function GameProvider({ children }) {
           newP2pManager.disconnectAll();
         };
       } else {
-        // Offline mode - create a basic game state
-        console.log('Operating in offline mode, creating local game state');
-        
-        // Create a simple game state with just the current user
+        // Initialize offline mode state
+        console.log('Initializing offline game state');
         const offlineGameState = {
           id: gameId,
+          version: 1,
+          timestamp: Date.now(),
           players: [{
             id: currentUser.id,
             name: currentUser.username,
@@ -497,39 +486,42 @@ export function GameProvider({ children }) {
             hand: [],
             battlefield: [],
             graveyard: [],
-            library: []
+            library: [],
+            exile: []
           }],
-          currentPhase: 'main1',
-          currentTurn: 1,
-          currentPlayerId: currentUser.id
+          phase: 'main1',
+          turn: 1,
+          activePlayer: currentUser.id
         };
-        
+
         setGameState(offlineGameState);
         setPlayers(offlineGameState.players);
         setIsConnected(false);
-        
+
         // Import deck if available
         try {
           const deckText = localStorage.getItem('userDeck');
           if (deckText) {
-            // Make sure Scryfall service is initialized
             const scryfallSvc = initializeScryfallService();
             const importedDeck = await scryfallSvc.parseDeckList(deckText);
             
-            // Update player's library with imported cards
-            const updatedPlayers = [...offlineGameState.players];
-            updatedPlayers[0].library = importedDeck.cards;
+            setGameState(prevState => {
+              const newState = { ...prevState };
+              newState.players[0].library = importedDeck.cards;
+              return newState;
+            });
             
-            setPlayers(updatedPlayers);
+            setPlayers(prevPlayers => {
+              const newPlayers = [...prevPlayers];
+              newPlayers[0].library = importedDeck.cards;
+              return newPlayers;
+            });
           }
         } catch (deckError) {
           console.error('Error importing deck in offline mode:', deckError);
         }
-        
+
         setLoading(false);
-        
-        // Return a no-op cleanup function
-        return () => {};
       }
     } catch (error) {
       console.error('Failed to join game:', error);
@@ -537,7 +529,7 @@ export function GameProvider({ children }) {
       setLoading(false);
       throw error;
     }
-  }, [API_ENDPOINTS, currentUser, getAuthHeader, ensureSocketConnection, initializeScryfallService]);
+  }, [currentUser, getAuthHeader, ensureSocketConnection, initializeScryfallService]);
 
   // Create a new game
   const createGame = async (name, maxPlayers = 4) => {
@@ -659,45 +651,89 @@ export function GameProvider({ children }) {
     }
   };
 
-  // Game actions
+  // Game actions with state updates
   const gameActions = {
     // Draw cards
     drawCard: (playerId, count = 1) => {
-      if (gameManager) {
+      if (offlineMode) {
+        setGameState(prevState => {
+          const newState = JSON.parse(JSON.stringify(prevState));
+          const player = newState.players.find(p => p.id === playerId);
+          if (player && player.library.length >= count) {
+            const drawnCards = player.library.splice(0, count);
+            player.hand.push(...drawnCards);
+          }
+          return newState;
+        });
+        return true;
+      } else if (gameManager) {
         return gameManager.applyAction({
           type: 'draw-card',
           payload: { playerId, count }
         });
-      } else if (offlineMode) {
-        // Offline mode implementation
-        setPlayers(prevPlayers => {
-          const updatedPlayers = [...prevPlayers];
-          const playerIndex = updatedPlayers.findIndex(p => p.id === playerId);
-          
-          if (playerIndex !== -1) {
-            const player = {...updatedPlayers[playerIndex]};
-            const drawnCards = player.library.slice(0, count);
-            player.hand = [...player.hand, ...drawnCards];
-            player.library = player.library.slice(count);
-            updatedPlayers[playerIndex] = player;
-          }
-          
-          return updatedPlayers;
-        });
-        return true;
       }
       return false;
     },
-    
+
+    // Update player life total
+    updateLife: (playerId, delta) => {
+      if (offlineMode) {
+        setGameState(prevState => {
+          const newState = JSON.parse(JSON.stringify(prevState));
+          const player = newState.players.find(p => p.id === playerId);
+          if (player) {
+            player.life = (player.life || 20) + delta;
+          }
+          return newState;
+        });
+        return true;
+      } else if (gameManager) {
+        return gameManager.applyAction({
+          type: 'update-life',
+          payload: { playerId, delta }
+        });
+      }
+      return false;
+    },
+
+    // Change game phase
+    changePhase: (phase) => {
+      if (offlineMode) {
+        setGameState(prevState => ({
+          ...prevState,
+          phase
+        }));
+        return true;
+      } else if (gameManager) {
+        return gameManager.applyAction({
+          type: 'change-phase',
+          payload: { phase }
+        });
+      }
+      return false;
+    },
+
+    // Move to next turn
+    nextTurn: () => {
+      if (offlineMode) {
+        setGameState(prevState => ({
+          ...prevState,
+          turn: prevState.turn + 1,
+          phase: 'untap'
+        }));
+        return true;
+      } else if (gameManager) {
+        return gameManager.applyAction({
+          type: 'next-turn',
+          payload: {}
+        });
+      }
+      return false;
+    },
+
     // Play a card from hand to battlefield
     playCard: (playerId, cardId, targetZone = 'battlefield') => {
-      if (gameManager) {
-        return gameManager.applyAction({
-          type: 'play-card',
-          payload: { playerId, cardId, targetZone }
-        });
-      } else if (offlineMode) {
-        // Offline mode implementation
+      if (offlineMode) {
         setPlayers(prevPlayers => {
           const updatedPlayers = [...prevPlayers];
           const playerIndex = updatedPlayers.findIndex(p => p.id === playerId);
@@ -723,40 +759,32 @@ export function GameProvider({ children }) {
           return updatedPlayers;
         });
         return true;
+      } else if (gameManager) {
+        return gameManager.applyAction({
+          type: 'play-card',
+          payload: { playerId, cardId, targetZone }
+        });
       }
       return false;
     },
-    
+
     // Move a card between zones
     moveCard: (playerId, cardId, sourceZone, targetZone) => {
-      if (gameManager) {
-        return gameManager.applyAction({
-          type: 'move-card',
-          payload: { playerId, cardId, sourceZone, targetZone }
-        });
-      } else if (offlineMode) {
-        // Offline mode implementation
+      if (offlineMode) {
         setPlayers(prevPlayers => {
           const updatedPlayers = [...prevPlayers];
           const playerIndex = updatedPlayers.findIndex(p => p.id === playerId);
           
           if (playerIndex !== -1) {
             const player = {...updatedPlayers[playerIndex]};
-            
-            // Find the card in the source zone
             const sourceCards = player[sourceZone] || [];
             const cardIndex = sourceCards.findIndex(c => c.id === cardId);
             
             if (cardIndex !== -1) {
               const card = sourceCards[cardIndex];
-              
-              // Remove from source zone
               player[sourceZone] = sourceCards.filter((_, i) => i !== cardIndex);
-              
-              // Add to target zone
               const targetCards = player[targetZone] || [];
               player[targetZone] = [...targetCards, card];
-              
               updatedPlayers[playerIndex] = player;
             }
           }
@@ -764,117 +792,105 @@ export function GameProvider({ children }) {
           return updatedPlayers;
         });
         return true;
+      } else if (gameManager) {
+        return gameManager.applyAction({
+          type: 'move-card',
+          payload: { playerId, cardId, sourceZone, targetZone }
+        });
       }
       return false;
     },
-    
-    // Update player life total
-    updateLife: (playerId, delta) => {
-      if (gameManager) {
-        return gameManager.applyAction({
-          type: 'update-life',
-          payload: { playerId, delta }
-        });
-      } else if (offlineMode) {
-        // Offline mode implementation
+
+    // Add counter to a card
+    addCounter: (playerId, cardId, counterType, count = 1) => {
+      if (offlineMode) {
         setPlayers(prevPlayers => {
           const updatedPlayers = [...prevPlayers];
           const playerIndex = updatedPlayers.findIndex(p => p.id === playerId);
           
           if (playerIndex !== -1) {
             const player = {...updatedPlayers[playerIndex]};
-            player.life = (player.life || 20) + delta;
+            const card = player.battlefield.find(c => c.id === cardId);
+            if (card) {
+              if (!card.counters) card.counters = {};
+              card.counters[counterType] = (card.counters[counterType] || 0) + count;
+            }
             updatedPlayers[playerIndex] = player;
           }
           
           return updatedPlayers;
         });
         return true;
-      }
-      return false;
-    },
-    
-    // Change game phase
-    changePhase: (phase) => {
-      if (gameManager) {
-        return gameManager.applyAction({
-          type: 'change-phase',
-          payload: { phase }
-        });
-      } else if (offlineMode) {
-        // Offline mode implementation
-        setGameState(prevState => ({
-          ...prevState,
-          currentPhase: phase
-        }));
-        return true;
-      }
-      return false;
-    },
-    
-    // Move to next turn
-    nextTurn: () => {
-      if (gameManager) {
-        return gameManager.applyAction({
-          type: 'next-turn',
-          payload: {}
-        });
-      } else if (offlineMode) {
-        // Offline mode implementation
-        setGameState(prevState => ({
-          ...prevState,
-          currentTurn: prevState.currentTurn + 1,
-          currentPhase: 'untap'
-        }));
-        return true;
-      }
-      return false;
-    },
-    
-    // Add counter to a card
-    addCounter: (playerId, cardId, counterType, count = 1) => {
-      if (gameManager) {
+      } else if (gameManager) {
         return gameManager.applyAction({
           type: 'add-counter',
           payload: { playerId, cardId, counterType, count }
         });
-      } else if (offlineMode) {
-        // Simplified offline implementation
-        return true;
       }
       return false;
     },
-    
+
     // Remove counter from a card
     removeCounter: (playerId, cardId, counterType, count = 1) => {
-      if (gameManager) {
+      if (offlineMode) {
+        setPlayers(prevPlayers => {
+          const updatedPlayers = [...prevPlayers];
+          const playerIndex = updatedPlayers.findIndex(p => p.id === playerId);
+          
+          if (playerIndex !== -1) {
+            const player = {...updatedPlayers[playerIndex]};
+            const card = player.battlefield.find(c => c.id === cardId);
+            if (card && card.counters && card.counters[counterType]) {
+              card.counters[counterType] = Math.max(0, card.counters[counterType] - count);
+            }
+            updatedPlayers[playerIndex] = player;
+          }
+          
+          return updatedPlayers;
+        });
+        return true;
+      } else if (gameManager) {
         return gameManager.applyAction({
           type: 'remove-counter',
           payload: { playerId, cardId, counterType, count }
         });
-      } else if (offlineMode) {
-        // Simplified offline implementation
-        return true;
       }
       return false;
     },
-    
+
     // Create a token
     createToken: (playerId, tokenData) => {
-      if (gameManager) {
+      if (offlineMode) {
+        setPlayers(prevPlayers => {
+          const updatedPlayers = [...prevPlayers];
+          const playerIndex = updatedPlayers.findIndex(p => p.id === playerId);
+          
+          if (playerIndex !== -1) {
+            const player = {...updatedPlayers[playerIndex]};
+            const token = {
+              ...tokenData,
+              id: uuidv4(),
+              isToken: true
+            };
+            player.battlefield = [...player.battlefield, token];
+            updatedPlayers[playerIndex] = player;
+          }
+          
+          return updatedPlayers;
+        });
+        return true;
+      } else if (gameManager) {
         return gameManager.applyAction({
           type: 'create-token',
           payload: { playerId, tokenData }
         });
-      } else if (offlineMode) {
-        // Simplified offline implementation
-        return true;
       }
       return false;
     }
   };
 
-  const value = {
+  // Context value with memoized current player
+  const value = useMemo(() => ({
     gameData,
     gameState,
     players,
@@ -892,7 +908,25 @@ export function GameProvider({ children }) {
     generateInviteLink,
     importDeck,
     ...gameActions
-  };
+  }), [
+    gameData,
+    gameState,
+    players,
+    currentUser,
+    isConnected,
+    socketConnected,
+    socketInitialized,
+    offlineMode,
+    loading,
+    error,
+    joinGame,
+    createGame,
+    getAvailableGames,
+    startGame,
+    generateInviteLink,
+    importDeck,
+    gameActions
+  ]);
 
   return (
     <GameContext.Provider value={value}>
